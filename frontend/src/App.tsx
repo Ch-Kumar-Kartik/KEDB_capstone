@@ -120,9 +120,10 @@ export default function App() {
   const filteredEntries = entries.filter(entry => {
     const query = searchQuery.toLowerCase();
     return (
-      entry.errorCode.toLowerCase().includes(query) ||
-      entry.name.toLowerCase().includes(query) ||
-      entry.symptoms.toLowerCase().includes(query)
+      entry.errorCode?.toLowerCase().includes(query) ||
+      entry.name?.toLowerCase().includes(query) ||
+      entry.symptoms?.toLowerCase().includes(query) ||
+      entry.rootCause?.toLowerCase().includes(query)
     );
   });
 

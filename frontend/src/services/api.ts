@@ -77,27 +77,24 @@ export function mapBackendToFrontend(backendEntry: BackendEntry): FrontendEntry 
 }
 
 // Map frontend to backend
-export function mapFrontendToBackend(frontendEntry: Partial<FrontendEntry>): Partial<BackendEntry> {
+export function mapFrontendToBackend(frontendEntry: Partial<FrontendEntry>): any {
+  // For creation, EntryCreate schema requires: title, description, severity, root_cause (optional)
+  // Note: description must be at least 10 characters per backend validation
   const severityMap: Record<string, 'critical' | 'high' | 'medium' | 'low'> = {
     'High': 'high',
     'Medium': 'medium',
     'Low': 'low'
   };
-
-  const statusMap: Record<string, 'draft' | 'in_review' | 'published'> = {
-    'Draft': 'draft',
-    'Pending Review': 'in_review',
-    'Published': 'published'
-  };
-
+  
+  const description = frontendEntry.symptoms || frontendEntry.name || 'No description provided';
+  
   return {
-    title: frontendEntry.name,
-    description: frontendEntry.symptoms || '',
+    title: frontendEntry.name || 'Untitled Entry',
+    description: description.length >= 10 ? description : description + ' - Additional details pending.',
     severity: frontendEntry.severity ? severityMap[frontendEntry.severity] : 'medium',
-    workflow_state: frontendEntry.status ? statusMap[frontendEntry.status] : 'draft',
-    status: 'active',
-    created_by: 'user@example.com', // TODO: Get from auth context
-    root_cause: frontendEntry.rootCause,
+    root_cause: frontendEntry.rootCause || null,
+    // Optionally include symptoms as array if we want structured symptoms
+    symptoms: frontendEntry.symptoms ? [{ description: frontendEntry.symptoms, order_index: 1 }] : []
   };
 }
 
@@ -107,7 +104,9 @@ export async function fetchEntries(): Promise<FrontendEntry[]> {
   if (!response.ok) {
     throw new Error('Failed to fetch entries');
   }
-  const backendEntries: BackendEntry[] = await response.json();
+  const data = await response.json();
+  // Backend returns paginated response: { total, skip, limit, items }
+  const backendEntries: BackendEntry[] = data.items || data;
   return backendEntries.map(mapBackendToFrontend);
 }
 
@@ -122,13 +121,17 @@ export async function fetchEntryById(id: string): Promise<FrontendEntry> {
 
 export async function createEntry(entry: Partial<FrontendEntry>): Promise<FrontendEntry> {
   const backendData = mapFrontendToBackend(entry);
+  const createdBy = backendData.created_by || 'user@example.com';
   
-  const response = await fetch(`${API_BASE_URL}/entries/`, {
+  // Remove created_by from body as it goes in query params
+  const { created_by, ...bodyData } = backendData as any;
+  
+  const response = await fetch(`${API_BASE_URL}/entries/?created_by=${encodeURIComponent(createdBy)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(backendData),
+    body: JSON.stringify(bodyData),
   });
   
   if (!response.ok) {
@@ -141,14 +144,34 @@ export async function createEntry(entry: Partial<FrontendEntry>): Promise<Fronte
 }
 
 export async function updateEntry(id: string, entry: Partial<FrontendEntry>): Promise<FrontendEntry> {
-  const backendData = mapFrontendToBackend(entry);
+  // For updates, we can send severity and workflow_state (EntryUpdate schema)
+  const severityMap: Record<string, 'critical' | 'high' | 'medium' | 'low'> = {
+    'High': 'high',
+    'Medium': 'medium',
+    'Low': 'low'
+  };
+
+  const updateData: any = {};
+  
+  if (entry.name) {
+    updateData.title = entry.name;
+  }
+  if (entry.symptoms) {
+    updateData.description = entry.symptoms.length >= 10 ? entry.symptoms : entry.symptoms + ' - Additional details pending.';
+  }
+  if (entry.rootCause !== undefined) {
+    updateData.root_cause = entry.rootCause;
+  }
+  if (entry.severity) {
+    updateData.severity = severityMap[entry.severity];
+  }
   
   const response = await fetch(`${API_BASE_URL}/entries/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(backendData),
+    body: JSON.stringify(updateData),
   });
   
   if (!response.ok) {

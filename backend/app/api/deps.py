@@ -47,3 +47,6 @@ async def get_current_active_user(
     if not current_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
     return current_user
+
+
+__all__ = ["get_db", "get_current_user", "get_current_active_user", "oauth2_scheme"]
